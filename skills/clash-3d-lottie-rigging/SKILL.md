@@ -1,100 +1,78 @@
 ---
 name: clash-3d-lottie-rigging
-description: End-to-end guide to build Clash Royale-style 3D PBR articulated Lottie character animations with a 9-state machine (idle, dash, attack, hit, victory, spawn, charge, special, defeat). Designed to be shared across AI agents so any agent can reproduce clean 3D puppet splitting, joint inpainting, seamless multi-part Lottie rigging, continuous spell VFX, and HTML state-machine integration.
+description: Universal workflow for AI agents to build Clash Royale-style 3D PBR articulated Lottie animations with a 9-state machine for ANY character archetype (mages, knights, archers, dragons, mascots, monsters). Covers 3D asset prep, background/island cleanup, dynamic limb segmentation + joint inpainting, programmatic pivot measurement, archetype-specific secondary motion, continuous VFX, and dark-background seam verification.
 ---
 
-# Clash Royale 3D PBR Articulated Lottie Rigging Skill
+# Universal 3D PBR Articulated Lottie Rigging Skill
 
-Use this skill whenever an AI agent needs to build an interactive 3D-rendered (PBR) character Lottie animation with a multi-state machine—preserving full 3D shading while achieving detailed, articulated limb/head/tail movement with **zero double-image ghosting** and **zero seam tearing**.
-
----
-
-## 0. Project Architecture
-
-```text
-project-root/
-├── .agent/skills/clash-3d-lottie-rigging/SKILL.md
-├── assets/
-│   ├── <char>-raw.png                  # 1024x1024 3D PBR render on #FFFFFF
-│   └── <char>-parts/                   # Cleanly split & inpainted 512x512 RGBA parts
-│       ├── body.png
-│       ├── head_hat.png
-│       ├── right_arm_staff.png
-│       ├── left_arm.png
-│       └── tail.png
-├── scripts/
-│   └── generate_<char>_lottie.py       # Self-contained splitter + Lottie JSON builder
-├── lottie/
-│   └── <char>.lottie.json              # Output Lottie 5.9.0 (512x512, 60 FPS, 745 frames)
-├── state-machine.js                    # 9-State Machine controller over lottie-web segments
-└── index.html                          # Interactive deck + live state graph + triggers
-```
+Use this skill to turn **any** 3D-rendered (PBR) character—mage, knight, archer, dragon, demon, robot, or cute mascot—into an interactive, articulated Lottie animation with a 9-state machine, preserving full 3D shading with **zero double-image ghosting** and **zero seam tearing**.
 
 ---
 
-## 1. Character Asset Requirements (3D PBR)
+## 1. Character Design & Asset Preparation (Any Archetype)
 
 When generating or preparing the base character PNG (`1024x1024` or higher):
-- **Style**: Stylized 3D PBR mobile game character (Clash Royale aesthetic), crisp studio rim lighting, clean silhouette.
-- **Pose for Clean Rigging**: Front-3/4 standing pose on a **solid pure white (`#FFFFFF`) background** with slight separation between weapon/staff, casting hand, torso, and tail so parts can be segmented cleanly.
-- **Never** replace a requested 3D PBR character with flat 2D vector shapes; always rig the 3D rendered parts directly.
+- **Style**: Stylized 3D PBR game character (studio rim lighting, rich materials, clean silhouette).
+- **Rig-Friendly Pose**: Front-3/4 standing or hovering pose on a **solid pure white (`#FFFFFF`) background** with clear separation between the torso and movable appendages (weapon arm, offhand arm, wings, cape, or tail) so polygons can cleanly isolate each part.
+- **Never** substitute flat 2D vector art when 3D PBR style is requested; always rig the 3D rendered layers directly.
 
 ---
 
-## 2. Background Removal & Enclosed Island Cleanup
+## 2. Universal Background & Enclosed-Island Removal
 
-1. **Edge Floodfill**: Floodfill from all 4 image borders removing near-white pixels (`r >= 238, g >= 238, b >= 238, max-min <= 16`).
-2. **Enclosed White Islands**: Gaps between robe hems, legs, arms, and tail often trap pure white background islands that edge floodfill cannot reach. Remove neutral-white pixels (`r >= 242, g >= 242, b >= 242, max-min <= 10`) in lower/outer gap zones while protecting warm cream fur/paws (`r - b > 10`) and eye highlights.
-3. **Alpha Edge Polish**: Apply a `0.8px` Gaussian blur on the alpha channel only at semi-transparent border pixels (preserving `0` and `>= 245` interiors).
-4. **Canvas Normalization**: Crop to tight bounding box and paste centered onto a `512x512` transparent canvas (`target_size = int(512 * 0.82)`).
-
----
-
-## 3. Articulated Puppet Splitting & Inpainting
-
-To animate head, arms/weapon, and tail independently **without ghosting or tearing**:
-
-1. **Define 5 Anatomical Layers**:
-   - `head_hat` (head + hat/hair, extending ~10px into collar overlap)
-   - `right_arm_staff` (weapon/staff + hand, pivoting at wrist inside sleeve cuff)
-   - `left_arm` (casting arm/paw + sleeve, extending ~18px inward at shoulder cap)
-   - `tail` (or cape/wings, rendered **behind** `body`, extending ~16px behind robe)
-   - `body` (torso + robe + feet, with `head_hat`, `right_arm_staff`, `left_arm`, and `tail` erased)
-2. **Inpaint Joint Seams on `body`**:
-   - Never leave hollow holes behind erased limbs. Run `18–22` iterations of 8-neighbor diffusion inpainting strictly inside narrow seam patches at the neck collar and both shoulders, masked to the body silhouette.
-3. **Prevent Joint Separation & Clipping**:
-   - Keep joint translations tiny (`±3–6px` max). Never translate a shoulder or neck `20px+` away from `body`.
-   - Use **rotation** around the anatomical pivot + **foreshortening scale (`108%–115%`)** for forward attacks/thrusts so weapons surge toward the viewer without detaching from the cuff or clipping through the face.
-4. **Mandatory Visual Verification**:
-   - Before finalizing, composite the 5 split parts onto a **dark background (`#121C30`)** across all extreme poses (attack windup, attack thrust, victory peak, special windup/slam) and inspect the rendered strip image visually to confirm **zero white islands, zero gaps, and zero clipping**.
+1. **Border Floodfill**: Floodfill from all 4 borders removing near-white pixels (`r >= 238, g >= 238, b >= 238, max-min <= 16`).
+2. **Enclosed White Islands**: Gaps between legs, capes, tails, and arms trap pure white background pockets unreachable from borders. Clean neutral-white pixels (`r >= 242, g >= 242, b >= 242, max-min <= 10`) in gap regions while protecting intentional highlights (eyes, glowing crystals, metallic speculars, warm cream fur/skin).
+3. **Alpha Edge Polish**: Apply a `0.8px` Gaussian blur only to boundary alpha pixels (keeping `0` and `>= 245` interiors intact).
+4. **Canvas Normalization**: Crop to tight bounding box and center onto a `512x512` transparent canvas (`target_size = int(512 * 0.82)`).
 
 ---
 
-## 4. Lottie 5.9.0 Rig & 9-State Machine Spec (`60 FPS`, `745 frames`)
+## 3. Dynamic Puppet Splitting & Joint Inpainting
 
-Standard state machine segments (`markers` in Lottie JSON & `state-machine.js`):
-- `idle`: `0–120` (loop) — breathing, head follow-through, gentle tail wag, subtle staff/paw bob, natural fur-shaded blink (`f=66..77`)
-- `dash`: `120–180` (loop) — forward lean, arms swept back, tail trailing
-- `attack`: `180–255` (one-shot → `idle`) — anticipation windup (`180–194`) → snap thrust + foreshortening scale (`194–207`) → continuous orb-to-target spell beam + stars → settle
-- `hit`: `255–305` (one-shot → `idle`) — sharp knockback recoil + opacity flicker
-- `victory`: `305–425` (loop) — 3 even celebratory hops spanning the **entire** 120-frame loop (no dead pause at the end), staff/paw pumps, fast tail wag, rising victory sparkles, glowing rune ring
-- `spawn`: `425–495` (one-shot → `idle`) — drop-in from `y=-80` with squash-and-stretch landing
-- `charge`: `495–575` (loop) — raised staff/paw, pulsing orb & rune aura
-- `special`: `575–665` (one-shot → `idle`) — high windup → aerial slam + ultimate spell beam
-- `defeat`: `665–745` (hold) — knockback jolt → slump/shrink (`100% → 76%`) → smooth full-character fade (`100 → 0` by `f=732`) + 38+ rising ash/elixir particles
+Inspect the normalized `512x512` character image first, then split it into **only the parts that character actually has**:
+
+- **Root (`body`)**: Torso, armor/robe, hips, legs/feet.
+- **Head (`head`)**: Head + helmet/hat/horns/ears (extend ~10px downward into neck/collar overlap).
+- **Primary Limb (`weapon_arm` / `right_arm`)**: Sword, staff, bow, hammer, or claw + forearm (pivot at shoulder or wrist inside sleeve/gauntlet cuff).
+- **Secondary Limb (`offhand_arm` / `left_arm`)**: Shield, casting hand, or offhand (extend shoulder cap ~16–18px inward).
+- **Back Appendages (`tail`, `wing_left`, `wing_right`, `cape`)**: Rendered **behind** `body`, extending ~14–16px behind the torso silhouette so they never detach when flapping or wagging.
+
+### Joint Seam Rules (Zero Ghosting, Zero Gaps)
+1. **Erase + Inpaint**: Erase every movable part from `body`, then run `18–22` iterations of 8-neighbor diffusion inpainting strictly inside narrow seam patches (neck collar, shoulders) masked to the `body` silhouette.
+2. **Measure Coordinates Programmatically**: Never hardcode pivots or VFX origins from another character. Measure the current character's exact joint pivots, eye centers, and weapon/orb/muzzle tip directly from its normalized `512x512` pixel map.
+3. **Constrain Joint Translation**: Keep joint `position` offsets tiny (`±3–6px`). Use **rotation** around the true anatomical pivot + **foreshortening scale (`108%–115%`)** for forward attacks so limbs never tear off the torso or clip through the face.
+4. **Mandatory Dark-Background Pose Check**: Before exporting final Lottie JSON, composite all split parts onto `#121C30` across extreme poses (windup, attack thrust, victory peak, special slam) and visually inspect the rendered strip for white islands, gaps, or clipping.
 
 ---
 
-## 5. Critical Lottie Pitfalls (Must Follow)
+## 4. Archetype Motion & Continuous VFX Guidelines
 
-1. **Parent Opacity Does NOT Inherit**:
-   - In `lottie-web`, child layers inherit `position`, `rotation`, `scale`, and `anchor`, **NOT `opacity`**.
-   - Every child layer (`HeadHat`, `RightArmStaff`, `LeftCastingArm`, `Tail`, `Eyelids`) **must** share a synchronized `child_sync_opacity()` curve for `spawn` (`424:100 -> 425:0 -> 434:100`) and `defeat` (`665:100 -> 732:0 -> 745:0`). Otherwise `Body` vanishes while the head/arms/tail float in mid-air.
-2. **Always Lock Boundary Keyframes Before Sudden Changes**:
-   - Never leave a gap between `276` (`100%`) and `425` (`0%`) on `opacity`—that causes `Victory` (`305–425`) to linearly fade out! Always insert `(424, 100, LINEAR)` right before `(425, 0, LINEAR)`.
-3. **Avoid Per-Layer Rectangular Dissolve Masks on Multi-Part Rigs**:
-   - Applying a local-space wipe mask to 5 separate `512x512` layers causes uneven horizontal cut lines across joints. Use synchronized opacity fade + scale-down + rising ash/ember particles instead.
-4. **No Cheap 2D Shapes on 3D PBR Faces**:
-   - Never draw flat 2D `✕` shapes or flat single-color ovals over 3D PBR eyes during `defeat`. For `idle` blinks, use a gradient fur-matched lid + dark curved lash stroke, and hide it during `defeat`.
-5. **Continuous Spell Energy**:
-   - Anchor `OrbCrystalGlow` (parented to weapon/staff) and `PawMagicAura` (parented to casting arm) at the exact measured pixel coordinates of the orb/paw. Ramp orb glow *before* launching `ArcaneSpellBeam` and staggered `MagicStar` projectiles (`delay = idx * 2`) from the exact orb coordinates.
+Adapt the secondary motion & VFX to match the character's role:
+- **Mages / Casters**: Charge glow at measured staff-orb/hand coordinates *before* firing; launch continuous gradient beam + staggered sparkles from the exact orb/hand position.
+- **Knights / Melee Fighters**: Heavy anticipation windup (`-25°` to `-35°`), fast snap slash/slam with weapon foreshortening (`112%–116%`) + crescent slash arc & impact shockwave at weapon tip.
+- **Archers / Gunners**: Draw-back tension hold -> crisp release recoil -> continuous projectile streak + muzzle flash at weapon tip.
+- **Dragons / Winged Mascots**: Independent flapping cycles on `wing_left` / `wing_right`, delayed S-curve follow-through on `tail`, squash-and-stretch hops, breath/fire burst from snout coordinates.
+
+---
+
+## 5. Lottie 5.9.0 & 9-State Machine Spec (`60 FPS`, `745 frames`)
+
+Standard state segments (`markers` + `state-machine.js`):
+- `idle` (`0–120`, loop): Breathing, delayed head follow-through, gentle tail/wing/weapon sway, optional natural blink.
+- `dash` (`120–180`, loop): Forward lean, limbs swept back, speed trail.
+- `attack` (`180–255`, one-shot → `idle`): Anticipation → snap strike/cast + VFX → recoil settle.
+- `hit` (`255–305`, one-shot → `idle`): Knockback recoil + brief opacity flicker.
+- `victory` (`305–425`, loop): 3 rhythmic celebratory hops/pumps spanning the **full** 120-frame loop (no dead pause at the end) + celebratory sparkles/aura.
+- `spawn` (`425–495`, one-shot → `idle`): Drop-in from `y=-80` with squash-and-stretch landing.
+- `charge` (`495–575`, loop): Weapon/hands raised, pulsing energy aura & rune ring.
+- `special` (`575–665`, one-shot → `idle`): High windup / aerial leap → ultimate strike/blast.
+- `defeat` (`665–745`, hold): Knockback jolt → slump/shrink (`100% → 76%`) → smooth full-character fade (`100 → 0` by `f=732`) + 38+ rising ash/ember/elixir particles.
+
+---
+
+## 6. Critical Lottie Technical Rules
+
+1. **Sync Child Opacity Manually**: Lottie does **not** inherit parent `opacity`. Every child layer (`head`, arms, `tail`, wings, eyelids) must share `child_sync_opacity()` for `spawn` (`424:100 -> 425:0 -> 434:100`) and `defeat` (`665:100 -> 732:0 -> 745:0`).
+2. **Lock Boundary Keyframes**: Always insert `(424, 100, LINEAR)` before `(425, 0, LINEAR)` on opacity so `victory` (`305–425`) never fades out linearly.
+3. **Avoid Per-Layer Wipe Masks on Multi-Part Rigs**: Rectangular dissolve masks on separate `512x512` child layers create uneven horizontal cut lines; use synchronized fade + scale-down + rising particles instead.
+4. **Preserve 3D Facial Fidelity**: Never draw cheap flat 2D `✕` or unshaded ovals over 3D PBR eyes. Keep 3D eyes clean on `defeat` and use gradient-matched lids + curved lash strokes for `idle` blinks.
